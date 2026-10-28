@@ -1,0 +1,51 @@
+{
+  "name": "vibecraft-studio",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx server/index.ts",
+    "build": "tsc --noEmit && vite build",
+    "start": "tsx server/index.ts --production",
+    "test": "tsx --test tests/*.test.ts",
+    "test:browser": "tsx tests/browser.ts",
+    "test:landing": "tsx tests/landing-browser.ts",
+    "test:export": "tsx tests/render-export.ts",
+    "test:friendly": "tsx tests/friendly-browser.ts",
+    "test:environment": "tsx tests/environment-browser.ts",
+    "check:environment": "node scripts/check-environment.mjs"
+  },
+  "engines": {
+    "node": "^24.11.0 || >=26.0.0"
+  },
+  "dependencies": {
+    "@fontsource/dm-sans": "^5.3.0",
+    "@fontsource/kalam": "^5.3.0",
+    "@fontsource/manrope": "^5.3.0",
+    "@phosphor-icons/react": "^2.1.10",
+    "express": "^5.3.0",
+    "lucide-react": "^1.61.0",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "svg-path-properties": "^2.2.0",
+    "svgpath": "^2.6.0",
+    "zod": "^4.6.7"
+  },
+  "overrides": {
+    "rea-agents": {
+      "zod": "4.6.7"
+    }
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.6",
+    "@types/node": "^26.6.5",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.1.2",
+    "playwright": "^1.64.1",
+    "rea-agents": "^6.4.0",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.5"
+  }
+}

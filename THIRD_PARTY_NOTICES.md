@@ -1,0 +1,13 @@
+# Third-party content and tooling
+
+The app's geometric illustrations, sample templates, stylized hand artwork and procedural soundtrack are original to this project. No VideoScribe source, proprietary illustrations, hand assets, music, templates or logos are bundled.
+
+Manrope, Kalam and DM Sans are distributed locally through Fontsource packages. Their complete font license notices are preserved in public/licenses and included in the production build.
+
+Application code uses React, React DOM, Express, Zod, lucide-react, Phosphor Icons React, svgpath and svg-path-properties. Their package licenses remain in node_modules; exact versions and transitive dependencies are recorded in package-lock.json. These libraries are distributed under their respective upstream licenses.
+
+Video export invokes the user's installed FFmpeg executable. It is not bundled. Browser rendering uses the user's available Chromium/Chrome/Edge executable or Playwright's separately installed browser. Tool availability does not imply a redistribution license for those binaries.
+
+REA is used as a development investigation tool. The repo and its MIT license cover its own code, not target applications or content. The local analysis retained provenance and limits in docs/rea-investigation.md.
+
+The requested landing-page-design skill is copied unchanged from elayadesign/ai-design-skills into Skill.md and skills/landing-page-design/SKILL.md. It includes its own provenance/credits and embedded upstream notice. Installation provenance and file hashes are recorded in docs/landing-page-intake.md.

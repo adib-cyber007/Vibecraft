@@ -1,0 +1,27 @@
+import { resolveBrowserExecutable } from '../scripts/browser-runtime.mjs';
+import { chromium } from 'playwright';
+import assert from 'node:assert/strict';
+import { mkdir, writeFile } from 'node:fs/promises';
+import { resolve } from 'node:path';
+const dir=resolve('artifacts/friendly-editor');await mkdir(dir,{recursive:true});
+const browser=await chromium.launch({headless:true,executablePath:resolveBrowserExecutable().executablePath});
+const context=await browser.newContext({viewport:{width:1440,height:1000}});
+const page=await context.newPage(),errors:string[]=[],checks:{name:string;passed:boolean;detail?:unknown}[]=[];
+page.on('pageerror',error=>errors.push(error.message));
+async function check(name:string,run:()=>Promise<unknown>){try{checks.push({name,passed:true,detail:await run()});console.log('PASS '+name);}catch(error){checks.push({name,passed:false,detail:(error as Error).stack});console.log('FAIL '+name+': '+(error as Error).message);await page.screenshot({path:resolve(dir,'failure-'+checks.length+'.png'),fullPage:true});}}
+try{
+  await page.goto('http://127.0.0.1:4310/studio',{waitUntil:'networkidle'});await page.getByLabel('Project title').waitFor();await page.evaluate(()=>document.fonts.ready);
+  await check('First visit has helpful actions and a simple timeline',async()=>{await page.getByRole('region',{name:'Getting started'}).waitFor();assert.equal(await page.getByTitle('Simple timeline',{exact:true}).getAttribute('aria-pressed'),'true');assert.ok(await page.locator('.simple-elements>button').count()>0);assert.ok(await page.getByRole('button',{name:'My projects',exact:true}).isVisible());});
+  await check('Guide opens animation properties for an existing drawing',async()=>{await page.getByRole('button',{name:'Set the animation',exact:false}).click();await page.getByLabel('Animation style',{exact:true}).waitFor();assert.ok(await page.getByLabel('Drawing tool',{exact:true}).isVisible());});
+  await check('Double clicking canvas text focuses the actual text editor',async()=>{await page.getByLabel('Close properties').click();const box=await page.locator('.paper').boundingBox();assert.ok(box);await page.mouse.dblclick(box.x+box.width*0.29,box.y+box.height*0.30);await page.getByLabel('Your text',{exact:true}).waitFor();await page.waitForFunction(()=>document.activeElement===document.querySelector('textarea[aria-label="Your text"]'));assert.equal(await page.getByLabel('Your text',{exact:true}).evaluate(el=>el===document.activeElement),true);});
+  await page.getByLabel('Close properties').click();
+  await check('Guidance can be dismissed and restored',async()=>{await page.getByLabel('Dismiss getting started guide').click();await page.reload();await page.getByLabel('Project title').waitFor();assert.equal(await page.getByRole('region',{name:'Getting started'}).count(),0);await page.getByTitle('Help and shortcuts').click();await page.getByRole('button',{name:'Show getting started guide'}).click();await page.getByRole('region',{name:'Getting started'}).waitFor();});
+  await check('Timeline mode is explicit and remembered',async()=>{await page.getByTitle('Advanced timeline',{exact:true}).click();await page.locator('.timeline-explanation').getByText('Entrance',{exact:false}).waitFor();await page.reload();await page.getByLabel('Project title').waitFor();assert.equal(await page.getByTitle('Advanced timeline',{exact:true}).getAttribute('aria-pressed'),'true');await page.getByTitle('Simple timeline',{exact:true}).click();});
+  await check('Canvas fits desktop and short laptop windows without stretching',async()=>{const result=[];for(const [width,height] of [[1440,1000],[1280,720]]){await page.setViewportSize({width,height});await page.waitForTimeout(150);const box=await page.locator('.paper').boundingBox(),area=await page.locator('.worktop').boundingBox();assert.ok(box&&area);assert.ok(Math.abs(box.width/box.height-16/9)<0.01);assert.ok(box.y>=area.y&&box.y+box.height<=area.y+area.height+1);result.push({width,height,paper:box});}return result;});
+  await page.setViewportSize({width:1440,height:1000});await page.screenshot({path:resolve(dir,'editor-friendly-desktop.png'),fullPage:true});
+  await check('Blank project offers actionable drawing and text choices',async()=>{await page.getByRole('button',{name:'My projects',exact:true}).click();await page.getByRole('button',{name:/Start from a blank canvas/}).click();await page.getByRole('button',{name:'Add an illustration',exact:true}).waitFor();await page.getByRole('button',{name:'Add text',exact:true}).click();await page.getByLabel('Your text',{exact:true}).waitFor();assert.equal(await page.locator('.selection-box').count(),1);});
+  await check('Mobile controls remain reachable and the canvas stays proportional',async()=>{await page.getByLabel('Close properties').click();await page.setViewportSize({width:390,height:844});await page.getByLabel('Collapse library').click();await page.waitForTimeout(150);const box=await page.locator('.paper').boundingBox();assert.ok(box);assert.ok(Math.abs(box.width/box.height-16/9)<0.01);assert.equal(await page.evaluate(()=>document.body.scrollWidth<=innerWidth),true);await page.screenshot({path:resolve(dir,'editor-friendly-mobile.png'),fullPage:true});});
+}finally{
+  await writeFile(resolve(dir,'report.json'),JSON.stringify({checks,pageErrors:errors,passed:checks.filter(item=>item.passed).length,failed:checks.filter(item=>!item.passed).length},null,2));await context.close();await browser.close();
+}
+if(checks.some(item=>!item.passed)||errors.length)process.exitCode=1;
