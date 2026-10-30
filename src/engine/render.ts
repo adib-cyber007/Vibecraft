@@ -11,6 +11,8 @@ export interface RenderOptions {
   preview?: boolean;
 }
 interface PathInfo { path: Path2D; length: number; properties: InstanceType<typeof svgPathProperties> }
+interface PreparedVector { entries: VectorPath[]; prepared: {info:PathInfo;strokes:PathInfo[];entry:VectorPath}[];total:number }
+const vectorCache=new WeakMap<VectorPath[],Map<string,PreparedVector>>();
 const pathCache = new Map<string, PathInfo>();
 function pathInfo(d: string): PathInfo | null {
   const existing = pathCache.get(d);
@@ -29,14 +31,19 @@ export async function prepareImages(project: Project): Promise<Map<string, Canva
   const images = new Map<string, CanvasImageSource>();
   const sources = new Set(project.scenes.flatMap(scene => scene.elements.filter(e => e.type === 'image' && e.src).map(e => e.src!)));
   await Promise.all([...sources].map(async src => {
-    const image = new Image();
-    image.crossOrigin = 'anonymous';
-    image.src = src;
-    await image.decode();
+    let pending=imageCache.get(src);
+    if(!pending){pending=(async()=>{const image=new Image();image.crossOrigin='anonymous';image.src=src;await image.decode();return image;})();imageCache.set(src,pending);pending.catch(()=>{if(imageCache.get(src)===pending)imageCache.delete(src);});trimImageCache();}
+    const image=await pending;
+    if(imageCache.get(src)===pending){imageSizes.set(src,image.naturalWidth*image.naturalHeight*4);trimImageCache();}
     images.set(src, image);
   }));
   return images;
 }
+// Shared pending work prevents concurrent thumbnail mounts decoding the same source.
+// Bounded entries keep switching between projects from growing this cache forever.
+const imageCache=new Map<string,Promise<HTMLImageElement>>();
+const imageSizes=new Map<string,number>();
+function trimImageCache():void {let bytes=0,encoded=0;for(const key of imageCache.keys()){bytes+=imageSizes.get(key)??0;encoded+=key.length;}while(bytes>256*1024*1024||encoded>64*1024*1024||imageCache.size>64){const key=imageCache.keys().next().value;if(key===undefined)break;bytes-=imageSizes.get(key)??0;encoded-=key.length;imageCache.delete(key);imageSizes.delete(key);}}
 
 /** A path-progress point in element-local units, useful for timeline/hand inspection. */
 export function vectorPoint(paths: VectorPath[], progress: number, width: number, height: number): { x: number; y: number } | null {
@@ -66,17 +73,19 @@ function expandedPaths(paths: VectorPath[]): VectorPath[] {
 }
 
 function renderVector(ctx: CanvasRenderingContext2D, element: SceneElement, progress: number, worldStroke = false): { x: number; y: number } | null {
-  const entries = expandedPaths(element.paths ?? []);
-  const prepared = entries.map(entry => {
+  const paths=element.paths??[];let sizes=vectorCache.get(paths);if(!sizes){sizes=new Map();vectorCache.set(paths,sizes);}const key=element.width+':'+element.height;
+  let geometry=sizes.get(key);
+  if(!geometry){const entries = expandedPaths(paths);
+  const prepared = entries.flatMap(entry => {
     const absolute = svgpath(entry.d).scale(element.width / 100, element.height / 100).abs().toString();
-    return { ...entry, info: pathInfo(absolute), strokes: (absolute.match(/M[^M]*/g) ?? []).map(d => pathInfo(d)).filter((part): part is PathInfo => !!part) };
-  }).filter(entry => entry.info !== null);
-  const total = prepared.reduce((sum, entry) => sum + entry.info!.length, 0);
+    const info=pathInfo(absolute);return info?[{entry,info,strokes:(absolute.match(/M[^M]*/g)??[]).map(d=>pathInfo(d)).filter((part):part is PathInfo=>!!part)}]:[];
+  });geometry={entries,prepared,total:prepared.reduce((sum,part)=>sum+part.info.length,0)};sizes.set(key,geometry);while(sizes.size>4)sizes.delete(sizes.keys().next().value!);}
+  const {entries,prepared,total}=geometry;
   let remaining = total * clamp(progress), cursor: { x: number; y: number } | null = null;
   ctx.save();
   if (entries.some(entry => entry.stroke !== undefined)) { ctx.beginPath(); ctx.rect(0, 0, element.width, element.height); ctx.clip(); }
-  for (const entry of prepared) {
-    const info = entry.info!, visibleLength = clamp(remaining, 0, info.length);
+  for (const part of prepared) {
+    const {entry,info}=part, visibleLength = clamp(remaining, 0, info.length);
     if (visibleLength <= 0 && progress < 1) break;
     const fraction = info.length ? visibleLength / info.length : 1;
     ctx.lineWidth = Math.max(0.01, entry.strokeWidth !== undefined ? entry.strokeWidth * element.width / 100 : worldStroke ? element.strokeWidth : element.strokeWidth * Math.min(element.width, element.height) / 100);
@@ -93,7 +102,7 @@ function renderVector(ctx: CanvasRenderingContext2D, element: SceneElement, prog
       ctx.lineWidth = Math.max(1, Math.min(element.width, element.height) / 100);
     }
     let strokeRemaining = visibleLength;
-    for (const stroke of entry.strokes) {
+    for (const stroke of part.strokes) {
       if (strokeRemaining <= 0 && progress < 1) break;
       const strokeLength = clamp(strokeRemaining, 0, stroke.length);
       if (strokeLength >= stroke.length) ctx.setLineDash([]);
@@ -280,6 +289,7 @@ function renderSceneContent(ctx: CanvasRenderingContext2D, project: Project, sce
 }
 
 /** Pure deterministic frame renderer shared by interactive preview and browser-based video export. */
+const fadeLayers=new WeakMap<CanvasRenderingContext2D,HTMLCanvasElement|OffscreenCanvas>();
 export function renderProject(ctx: CanvasRenderingContext2D, project: Project, time: number, options: RenderOptions): void {
   ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalAlpha = 1; ctx.clearRect(0, 0, options.width, options.height);
   const state = getSceneAtTime(project, time);
@@ -290,7 +300,12 @@ export function renderProject(ctx: CanvasRenderingContext2D, project: Project, t
     const previous = project.scenes[state.sceneIndex - 1];
     paintBackground(ctx, previous.background, options.width, options.height);
     renderSceneContent(ctx, project, previous, sceneDuration(previous), sceneCameraAtTime(previous, sceneDuration(previous)), options);
-    ctx.globalAlpha = clamp(state.localTime / state.scene.transitionDuration);
+    let layer=fadeLayers.get(ctx);if(!layer){layer=typeof OffscreenCanvas!=='undefined'?new OffscreenCanvas(options.width,options.height):document.createElement('canvas');fadeLayers.set(ctx,layer);}if(layer.width!==options.width)layer.width=options.width;if(layer.height!==options.height)layer.height=options.height;
+    const incoming=layer.getContext('2d') as CanvasRenderingContext2D;
+    incoming.save();incoming.setTransform(1,0,0,1,0,0);incoming.globalAlpha=1;incoming.clearRect(0,0,options.width,options.height);
+    paintBackground(incoming,state.scene.background,options.width,options.height);
+    renderSceneContent(incoming,project,state.scene,state.localTime,camera,options);incoming.restore();
+    ctx.globalAlpha=clamp(state.localTime/state.scene.transitionDuration);ctx.drawImage(layer,0,0);ctx.restore();return;
   }
   paintBackground(ctx, state.scene.background, options.width, options.height);
   renderSceneContent(ctx, project, state.scene, state.localTime, camera, options, state.sceneIndex - 1);

@@ -17,6 +17,7 @@ import { parseVectorSvg } from './svg-import';
 import { EditorGuide } from './EditorGuide';
 import { SceneNavigator } from './SceneNavigator';
 import { CameraPanel } from './CameraPanel';
+import { editProject } from './edit-project';
 import './editor-friendly.css';
 import './reference-environment.css';
 
@@ -40,13 +41,13 @@ export default function App(){
   const notify=useCallback((message:string)=>{setToast(message);clearTimeout(toastTimer.current);toastTimer.current=setTimeout(()=>setToast(''),6500);},[]);
   const apply=useCallback((value:Project)=>{projectRef.current=value;setProject(value);setSaveStatus('Saving…');},[]);
   const checkpoint=useCallback(()=>{past.current.push(structuredClone(projectRef.current));if(past.current.length>70)past.current.shift();future.current=[];setHistoryRevision(n=>n+1);},[]);
-  const edit:Edit=useCallback((fn,record=true)=>{if(record)checkpoint();const p=structuredClone(projectRef.current);fn(p);p.updatedAt=new Date().toISOString();apply(p);},[checkpoint,apply]);
+  const edit:Edit=useCallback((fn,record=true)=>{try{const p=editProject(projectRef.current,fn);if(record)checkpoint();apply(p);return true;}catch(error){notify('Change not applied: '+(error as Error).message);return false;}},[checkpoint,apply,notify]);
   function undo(){const previous=past.current.pop();if(previous){future.current.push(projectRef.current);previous.updatedAt=new Date().toISOString();apply(previous);setHistoryRevision(n=>n+1);}}
   function redo(){const next=future.current.pop();if(next){past.current.push(projectRef.current);next.updatedAt=new Date().toISOString();apply(next);setHistoryRevision(n=>n+1);}}
   useEffect(()=>{
     document.title='Vibecraft — Animation studio';
     let active=true;
-    listProjects().then(list=>{if(!active)return;if(list.length){const p=parseProject(list[0]);projectRef.current=p;setProject(p);setSceneId(p.scenes[0].id);}setReady(true);setSaveStatus('Saved on this computer');}).catch(e=>{if(active){setReady(true);notify('Could not read saved projects: '+e.message);}});
+    listProjects().then(list=>{if(!active)return;if(list.length){const p=parseProject(list[0]);projectRef.current=p;setProject(p);setSceneId(p.scenes[0].id);}setReady(true);setSaveStatus('Saved on this computer');}).catch(e=>{if(active){setReady(true);notify('Could not open the latest save. Open My projects to download a recovery copy. '+e.message);}});
     return()=>{active=false;clearTimeout(toastTimer.current);};
   },[]);
   useEffect(()=>{
@@ -56,10 +57,11 @@ export default function App(){
   },[project,ready]);
   useEffect(()=>{if(!project.scenes.some(s=>s.id===sceneId)){setSceneId(project.scenes[0].id);setSelection([]);}setTime(t=>Math.min(t,projectDuration(project)));},[project]);
   useEffect(()=>{
-    const nodes=new Map<string,HTMLAudioElement>();
-    project.audio.forEach(track=>{const audio=new Audio(track.src);audio.preload='auto';nodes.set(track.id,audio);});audioNodes.current=nodes;
-    return()=>{nodes.forEach(audio=>{audio.pause();audio.src='';});};
+    const nodes=audioNodes.current,ids=new Set(project.audio.map(track=>track.id));
+    for(const [id,audio] of nodes)if(!ids.has(id)){audio.pause();audio.src='';nodes.delete(id);}
+    project.audio.forEach(track=>{const existing=nodes.get(track.id);if(existing?.src===track.src)return;if(existing){existing.pause();existing.src='';}const audio=new Audio(track.src);audio.preload='auto';nodes.set(track.id,audio);});
   },[project.audio]);
+  useEffect(()=>()=>{audioNodes.current.forEach(audio=>{audio.pause();audio.src='';});audioNodes.current.clear();},[]);
   useEffect(()=>{
     if(!playing){audioNodes.current.forEach(audio=>audio.pause());return;}
     let raf=0,last=performance.now(),current=time;
@@ -91,19 +93,19 @@ export default function App(){
     if(s.elements.length>=150){notify('A scene can contain up to 150 elements. Add another scene to keep building.');return;}
     element.x=s.camera.x-element.width/2;element.y=s.camera.y-element.height/2;
     element.animation.start=s.elements.length?Math.round(Math.max(...s.elements.map(el=>el.animation.start+el.animation.draw))*10)/10+0.3:0;
-    edit(p=>p.scenes.find(item=>item.id===s.id)!.elements.push(element));select([element.id]);
+    if(edit(p=>p.scenes.find(item=>item.id===s.id)!.elements.push(element))!==false)select([element.id]);
   }
   function addAsset(asset:VectorAsset){addElement(createElement('vector',{name:asset.name,paths:structuredClone(asset.paths),width:360,height:360,color:'#25364a',strokeWidth:1.7}));setRecentAssets(previous=>{const next=[asset.id,...previous.filter(id=>id!==asset.id)].slice(0,24);try{localStorage.setItem('vibecraft-recent-assets',JSON.stringify(next));}catch{}return next;});}
   function addText(kind='heading'){addElement(createElement('text',{name:kind==='heading'?'Your next big idea':'A little detail goes a long way.',text:kind==='heading'?'Your next big idea':kind==='note'?'A handwritten note':'A little detail goes a long way.',fontFamily:kind==='body'?'DM Sans':'Kalam',fontSize:kind==='heading'?88:kind==='body'?44:64,fontWeight:kind==='heading'?700:400,width:850,height:220}));}
   function duplicate(){
     const originals=currentScene.elements.filter(e=>selection.includes(e.id));if(!originals.length)return;
-    const copies=originals.map(e=>({...structuredClone(e),id:makeId(),x:e.x+35,y:e.y+35,name:e.name+' copy'}));edit(p=>p.scenes.find(s=>s.id===sceneId)!.elements.push(...copies));select(copies.map(e=>e.id));
+    const copies=originals.map(e=>({...structuredClone(e),id:makeId(),x:e.x+35,y:e.y+35,name:e.name+' copy'}));if(edit(p=>p.scenes.find(s=>s.id===sceneId)!.elements.push(...copies))!==false)select(copies.map(e=>e.id));
   }
   function remove(){if(!selection.length)return;edit(p=>{const s=p.scenes.find(s=>s.id===sceneId)!;s.elements=s.elements.filter(e=>!selection.includes(e.id));});setSelection([]);}
-  function addScene(){if(project.scenes.length>=25){notify('This project has reached 25 scenes.');return;}const s=createScene(project.width,project.height,{name:'Scene '+(project.scenes.length+1)});edit(p=>p.scenes.push(s));chooseScene(s.id);}
-  function duplicateScene(){if(project.scenes.length>=25)return;const s=structuredClone(currentScene),old=s.id;s.id=makeId();s.name+=' copy';s.elements.forEach(e=>e.id=makeId());s.cameras?.forEach(camera=>camera.id=makeId());edit(p=>{p.scenes.splice(p.scenes.findIndex(s=>s.id===old)+1,0,s);p.audio.push(...p.audio.filter(a=>a.sceneId===old).map(a=>({...a,id:makeId(),sceneId:s.id})));});chooseScene(s.id);}
+  function addScene(){if(project.scenes.length>=25){notify('This project has reached 25 scenes.');return;}const s=createScene(project.width,project.height,{name:'Scene '+(project.scenes.length+1)});if(edit(p=>p.scenes.push(s))!==false)chooseScene(s.id);}
+  function duplicateScene(){if(project.scenes.length>=25)return;const s=structuredClone(currentScene),old=s.id;s.id=makeId();s.name+=' copy';s.elements.forEach(e=>e.id=makeId());s.cameras?.forEach(camera=>camera.id=makeId());const accepted=edit(p=>{p.scenes.splice(p.scenes.findIndex(s=>s.id===old)+1,0,s);p.audio.push(...p.audio.filter(a=>a.sceneId===old).map(a=>({...a,id:makeId(),sceneId:s.id})));});if(accepted!==false)chooseScene(s.id);}
   function removeScene(){if(project.scenes.length<=1)return;const index=project.scenes.findIndex(s=>s.id===sceneId),next=project.scenes[index===0?1:index-1].id;edit(p=>{p.scenes=p.scenes.filter(s=>s.id!==sceneId);p.audio=p.audio.filter(a=>a.sceneId!==sceneId);});chooseScene(next);}
-  async function openProject(p:Project){try{await saveProject(projectRef.current);setPlaying(false);setPreviewing(false);past.current=[];future.current=[];setHistoryRevision(n=>n+1);apply(p);setSceneId(p.scenes[0].id);setTime(0);setSelection([]);setPan({x:0,y:0});setZoom(1);}catch(e){notify('Could not save the current project before switching: '+(e as Error).message);}}
+  async function openProject(p:Project){try{p=parseProject(p);await saveProject(projectRef.current);setPlaying(false);setPreviewing(false);past.current=[];future.current=[];setHistoryRevision(n=>n+1);apply(p);setSceneId(p.scenes[0].id);setTime(0);setSelection([]);setPan({x:0,y:0});setZoom(1);}catch(e){notify('Could not open project: '+(e as Error).message);}}
   async function importImages(files:FileList|File[]){
     setBusy(true);try{const items:SceneElement[]=[];for(const file of Array.from(files)){
       if(file.size>20*1024*1024)throw new Error('Each image must be smaller than 20 MB.');
@@ -127,7 +129,7 @@ export default function App(){
       else if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='y'){e.preventDefault();redo();}
       else if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='d'){e.preventDefault();duplicate();}
       else if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='c'){clipboard.current=structuredClone(currentScene.elements.filter(el=>selection.includes(el.id)));}
-      else if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='v'&&clipboard.current.length){e.preventDefault();const copies=clipboard.current.map(el=>({...structuredClone(el),id:makeId(),x:el.x+40,y:el.y+40}));edit(p=>p.scenes.find(s=>s.id===sceneId)!.elements.push(...copies));select(copies.map(el=>el.id));}
+      else if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='v'&&clipboard.current.length){e.preventDefault();const copies=clipboard.current.map(el=>({...structuredClone(el),id:makeId(),x:el.x+40,y:el.y+40}));if(edit(p=>p.scenes.find(s=>s.id===sceneId)!.elements.push(...copies))!==false)select(copies.map(el=>el.id));}
       else if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='a'){e.preventDefault();select(currentScene.elements.filter(el=>!el.hidden).map(el=>el.id));}
       else if(e.key==='Delete'||e.key==='Backspace'){e.preventDefault();remove();}
       else if(e.key==='Escape'){setSelection([]);setPreviewing(false);setPlaying(false);setTool('select');}

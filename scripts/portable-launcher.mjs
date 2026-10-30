@@ -42,6 +42,7 @@ async function start(){
   if(missing.length)throw new Error('Extract the complete ZIP before starting Vibecraft. Missing: '+missing[0]);
   const saved=await state(),port=requestedPort??(saved?.rootId===rootId?saved.port:4310);
   if(!Number.isInteger(port)||port<1024||port>65535)throw new Error('Use --port with a whole number from 1024 to 65535.');
+  if(saved?.rootId===rootId&&saved.port!==port){const owned=await health(saved.url);let alive=false;if(Number.isInteger(saved.pid)&&saved.pid>0){try{process.kill(saved.pid,0);alive=true;}catch{}}if(owned?.sessionId===saved.sessionId||alive)throw new Error('This folder already has a studio running on port '+saved.port+'. Run Stop-Vibecraft.cmd before changing ports.');}
   const url='http://127.0.0.1:'+port,live=await health(url);
   if(live){
     if(saved?.rootId===rootId&&live.app==='vibecraft'&&live.sessionId===saved.sessionId){console.log('Vibecraft is ready at '+url);show(url);return;}

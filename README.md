@@ -4,6 +4,8 @@ A local whiteboard animation studio and a responsive dark landing page for conte
 
 Public source repository: [adib-cyber007/Vibecraft](https://github.com/adib-cyber007/Vibecraft).
 
+Version 0.1.1 fixes invalid autosaves, repeated media work, vector preparation costs, scene/audio fades, concurrent AI requests and portable port ownership. See [release notes and measurements](docs/release-0.1.1.md).
+
 ## Share with another PC
 
 The Windows x64 portable ZIP contains the built app, Node, the rendering browser, FFmpeg/FFprobe, production dependencies, source and runtime notices. Copy it to a Windows 10/11 64-bit computer, extract the entire ZIP into a writable folder, and double-click Start-Vibecraft.cmd. No developer tools, installation or internet connection are needed for editing and video export. Stop-Vibecraft.cmd closes only the session started from that folder. Check-Vibecraft.cmd checks the bundled runtimes.
@@ -69,6 +71,8 @@ Local video output and diagnostic artifacts live under .runtime/ and artifacts/.
     npm run test:export
     npm run test:friendly
     npm run test:environment
+    npm run test:fixes
+    npm run test:portable
 
 Browser scripts use isolated contexts. The editor and landing browser scripts expect the local server at port 4310; set VIBECRAFT_URL to change it. The render-export script starts its own temporary production server against dist/. Native processes, localhost listeners and Windows voices require their operating-system permissions.
 

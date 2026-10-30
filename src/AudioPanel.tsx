@@ -3,7 +3,7 @@ import { Mic, Music, Pause, Play, Scissors, Square, Trash2, Upload, Volume2 } fr
 import { makeId, type AudioTrack, type Project } from './model';
 import type { Edit } from './Stage';
 import { readDataURL } from './storage';
-import { audioTrackStart, clamp } from './engine/timeline';
+import { audioTrackStart, clamp, effectiveAudioFades } from './engine/timeline';
 
 interface Props { project: Project; sceneId: string; edit: Edit; notify: (message: string) => void; selectedId?: string; time?: number }
 interface Voice { name: string; language: string }
@@ -151,7 +151,8 @@ export function AudioPanel({ project, sceneId, edit, notify, selectedId, time }:
       if (playback.current !== audio) return;
       const elapsed = audio.currentTime - track.trimStart, remaining = track.trimEnd - audio.currentTime;
       if (remaining <= 0) { stopPlayback(); return; }
-      audio.volume = clamp(track.volume) * (track.fadeIn ? clamp(elapsed / track.fadeIn) : 1) * (track.fadeOut ? clamp(remaining / track.fadeOut) : 1);
+      const {fadeIn,fadeOut}=effectiveAudioFades(track);
+      audio.volume = clamp(track.volume) * (fadeIn ? clamp(elapsed / fadeIn) : 1) * (fadeOut ? clamp(remaining / fadeOut) : 1);
       playbackFrame.current = requestAnimationFrame(tick);
     };
     try { await audio.play(); if (playback.current !== audio) { audio.pause(); return; } setPlayingId(track.id); tick(); } catch (error) { notify(`Audio playback failed: ${(error as Error).message}`); stopPlayback(); }

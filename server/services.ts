@@ -66,10 +66,10 @@ export class LocalServices {
   async generateScript(input: unknown): Promise<z.infer<typeof storySchema>> {
     const request = scriptRequest.parse(input);
     if (this.aiBusy) throw Object.assign(new Error('A local storyboard generation is already running.'), { status: 409 });
-    const status = await this.aiStatus();
-    if (!status.available || !status.models.includes(request.model)) throw Object.assign(new Error('Choose an available installed Ollama model.'), { status: 503 });
     this.aiBusy = true;
     try {
+      const status = await this.aiStatus();
+      if (!status.available || !status.models.includes(request.model)) throw Object.assign(new Error('Choose an available installed Ollama model.'), { status: 503 });
       const response = z.object({ response: z.string() }).parse(await localJson('/api/generate', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ model: request.model, stream: false, format: 'json', keep_alive: '5m', options: { num_predict: 2500, temperature: 0.6 },

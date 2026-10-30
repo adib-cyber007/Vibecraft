@@ -5,7 +5,7 @@ import { once } from 'node:events';
 import { z } from 'zod';
 import type { Browser, BrowserContext } from 'playwright';
 import type { Project } from '../src/model';
-import { audioTrackDuration, audioTrackStart, projectDuration } from '../src/engine/timeline';
+import { audioTrackDuration, audioTrackStart, projectDuration, effectiveAudioFades } from '../src/engine/timeline';
 import { decodeDataUrl, parseProject } from '../src/validation';
 import { ChildProcesses, runCommand } from './process';
 import { resolveBrowserExecutable } from '../scripts/browser-runtime.mjs';
@@ -28,7 +28,7 @@ export function exportDimensions(project: Project, preset: number): { width: num
 export function buildAudioFilter(project: Project, duration: number): { filter: string; inputs: string[] } {
   const filters: string[] = [], inputs: string[] = [];
   project.audio.forEach((track, index) => {
-    const length = audioTrackDuration(track), fadeIn = Math.min(track.fadeIn, length), fadeOut = Math.min(track.fadeOut, length);
+    const length = audioTrackDuration(track), {fadeIn,fadeOut} = effectiveAudioFades(track);
     const stages = [`atrim=start=${track.trimStart}:end=${track.trimEnd}`, 'asetpts=PTS-STARTPTS', `volume=${track.volume}`];
     if (fadeIn > 0) stages.push(`afade=t=in:st=0:d=${fadeIn}`);
     if (fadeOut > 0) stages.push(`afade=t=out:st=${Math.max(0, length - fadeOut)}:d=${fadeOut}`);

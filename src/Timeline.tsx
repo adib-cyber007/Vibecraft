@@ -1,4 +1,4 @@
-import { useRef, useState, type PointerEvent } from 'react';
+import { memo, useRef, useState, type PointerEvent } from 'react';
 import { Plus, Play, Pause, SkipBack, ZoomIn, ZoomOut, List, Layers, ChevronRight, Copy, Trash2, Camera } from 'lucide-react';
 import type { Project, SceneElement } from './model';
 import { renderProject, prepareImages } from './engine/render';
@@ -8,13 +8,18 @@ import type { Edit } from './Stage';
 import { useEffect } from 'react';
 
 export const timecode=(value:number)=>Math.floor(value/60).toString().padStart(2,'0')+':'+Math.floor(value%60).toString().padStart(2,'0');
-export function SceneThumb({project,sceneId}:{project:Project;sceneId:string}) {
+export const SceneThumb=memo(function SceneThumb({project,sceneId}:{project:Project;sceneId:string}) {
   const canvas=useRef<HTMLCanvasElement>(null),images=useRef(new Map<string,CanvasImageSource>()),[revision,setRevision]=useState(0);
   const sourceKey=project.scenes.flatMap(scene=>scene.elements.map(element=>(element.src||'')+(element.fontFamily||''))).join('|');
   useEffect(()=>{let active=true;Promise.all([prepareImages(project),loadFonts(project)]).then(([loaded])=>{if(active){images.current=loaded;setRevision(value=>value+1);}}).catch(()=>{});return()=>{active=false;};},[sourceKey]);
   useEffect(()=>{const ctx=canvas.current?.getContext('2d');if(ctx)renderProject(ctx,project,sceneStart(project,sceneId)+0.001,{width:240,height:135,images:images.current,preview:true});},[project,sceneId,revision]);
   return <canvas ref={canvas} width={240} height={135}/>;
-}
+},(previous,next)=>{
+  const a=previous.project,b=next.project;if(previous.sceneId!==next.sceneId||a.width!==b.width||a.height!==b.height||a.mode!==b.mode||a.fonts!==b.fonts)return false;
+  const ai=a.scenes.findIndex(s=>s.id===previous.sceneId),bi=b.scenes.findIndex(s=>s.id===next.sceneId);
+  if(a.mode==='roaming')return ai===bi&&a.scenes.slice(0,ai+1).every((scene,index)=>scene===b.scenes[index]);
+  return a.scenes[ai]===b.scenes[bi];
+});
 interface Props {project:Project;sceneId:string;onScene:(id:string)=>void;onAdd:()=>void;onDuplicate:()=>void;onDelete:()=>void;selection:string[];onSelect:(ids:string[])=>void;time:number;onSeek:(time:number)=>void;playing:boolean;onPlay:()=>void;edit:Edit;checkpoint:()=>void;onAudio:(id:string)=>void;showSceneStrip?:boolean}
 export function Timeline({project,sceneId,onScene,onAdd,onDuplicate,onDelete,selection,onSelect,time,onSeek,playing,onPlay,edit,checkpoint,onAudio,showSceneStrip=true}:Props) {
   const [advanced,setAdvanced]=useState(()=>{try{return localStorage.getItem('vibecraft-timeline')==='advanced';}catch{return false;}}),[scale,setScale]=useState(64);

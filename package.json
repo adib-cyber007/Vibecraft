@@ -1,6 +1,6 @@
 {
   "name": "vibecraft-studio",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "type": "module",
   "scripts": {
@@ -15,7 +15,8 @@
     "test:environment": "tsx tests/environment-browser.ts",
     "check:environment": "node scripts/check-environment.mjs",
     "package:windows": "npm run build && node scripts/package-windows.mjs",
-    "test:portable": "tsx tests/portable-package.ts"
+    "test:portable": "tsx tests/portable-package.ts",
+    "test:fixes": "tsx tests/fixes-browser.ts && tsx tests/render-regressions.ts"
   },
   "engines": {
     "node": "^24.11.0 || >=26.0.0"

@@ -73,6 +73,35 @@ const audio = z.object({ id, name: label, src: audioSrc, kind: z.enum(['music', 
 });
 const projectSchema = z.object({ version: z.literal(1), id, title: label, width: z.union([z.literal(1920), z.literal(1080), z.literal(1280)]), height: z.union([z.literal(1080), z.literal(1920), z.literal(1280)]), mode: z.enum(['scenes', 'roaming']), scenes: z.array(scene).min(1).max(25), audio: z.array(audio).max(50), fonts: z.array(z.object({ family: z.string().min(1).max(100).regex(/^[\p{L}\p{N}\s_-]+$/u), src: fontSrc }).strict()).max(20).optional(), script: z.string().max(50000).optional(), createdAt: z.string().datetime(), updatedAt: z.string().datetime() }).strict();
 
+// Existing path geometry and media entered through the fully validated import/catalog
+// boundary. Editing checks all mutable fields; changed resources are checked below.
+const editableElement = element.safeExtend({ src: z.string().optional(), paths: z.custom<Project['scenes'][number]['elements'][number]['paths']>().optional() });
+const editableSchema = projectSchema.safeExtend({
+  scenes: z.array(scene.safeExtend({elements:z.array(editableElement).max(150)})).min(1).max(25),
+  audio: z.array(audio.safeExtend({src:z.string()})).max(50),
+  fonts: z.array(z.object({family:z.string().min(1).max(100).regex(/^[\p{L}\p{N}\s_-]+$/u),src:z.string()})).max(20).optional(),
+});
+export function assertProjectEdit(previous: Project, next: Project): void {
+  editableSchema.parse(next);
+  const priorElements=new Map(previous.scenes.flatMap(s=>s.elements).map(e=>[e.id,e]));
+  for(const item of next.scenes.flatMap(s=>s.elements))if(item.paths!==priorElements.get(item.id)?.paths)element.shape.paths.parse(item.paths);
+  const priorImages = new Set(previous.scenes.flatMap(s=>s.elements.flatMap(e=>e.src?[e.src]:[])));
+  const priorAudio = new Set(previous.audio.map(a=>a.src)), priorFonts = new Set(previous.fonts?.map(f=>f.src));
+  const sources = new Set<string>(); let bytes=0;
+  for(const element of next.scenes.flatMap(s=>s.elements))if(element.src&&!sources.has(element.src)){if(!priorImages.has(element.src))decodeDataUrl(element.src,'image');sources.add(element.src);bytes+=embeddedBytes(element.src);}
+  for(const track of next.audio){if(track.sceneId&&!next.scenes.some(s=>s.id===track.sceneId))throw new Error('Audio refers to a missing scene.');if(!sources.has(track.src)){if(!priorAudio.has(track.src))decodeDataUrl(track.src,'audio');sources.add(track.src);bytes+=embeddedBytes(track.src);}}
+  for(const font of next.fonts??[]){if(!priorFonts.has(font.src))fontSrc.parse(font.src);bytes+=embeddedBytes(font.src);}
+  assertProjectLimits(next,bytes);
+}
+function embeddedBytes(src:string):number {const value=src.slice(src.indexOf(',')+1);return value.length*3/4-(value.endsWith('==')?2:value.endsWith('=')?1:0);}
+function assertProjectLimits(project:Project,assetBytes:number):void {
+  if (![[1920,1080],[1080,1920],[1080,1080],[1280,1280]].some(([w,h])=>project.width===w&&project.height===h))throw new Error('Unsupported project aspect ratio.');
+  const ids=new Set<string>();for(const item of [...project.scenes,...project.scenes.flatMap(s=>s.elements),...project.scenes.flatMap(s=>s.cameras??[]),...project.audio]){if(ids.has(item.id))throw new Error('Duplicate scene, element, camera or audio ID.');ids.add(item.id);}
+  if(project.scenes.reduce((sum,s)=>sum+s.elements.length,0)>500)throw new Error('A project may contain at most 500 elements.');
+  if(assetBytes>MAX_PROJECT_ASSET_BYTES)throw new Error('Project assets exceed the 40 MB limit.');
+  if(projectDuration(project)>MAX_DURATION)throw new Error('The project exceeds the 10 minute render limit.');
+}
+
 export function parseProject(input: unknown): Project {
   const project = projectSchema.parse(input) as Project;
   if (![[1920, 1080], [1080, 1920], [1080, 1080], [1280, 1280]].some(([w, h]) => project.width === w && project.height === h)) throw new Error('Unsupported project aspect ratio.');

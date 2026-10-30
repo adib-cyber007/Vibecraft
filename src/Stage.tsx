@@ -1,10 +1,10 @@
-import { useEffect, useRef, useState, type PointerEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type PointerEvent } from 'react';
 import { renderProject, prepareImages } from './engine/render';
 import { sceneStart } from './engine/timeline';
 import { createElement, defaultAnimation, type Project, type SceneElement } from './model';
 import { loadFonts } from './storage';
 
-export type Edit = (fn: (project: Project) => void, record?: boolean) => void;
+export type Edit = (fn: (project: Project) => void, record?: boolean) => boolean | void;
 export type Tool = 'select' | 'pan' | 'text' | 'rectangle' | 'ellipse' | 'arrow';
 interface Props {
   project: Project; sceneId: string; selection: string[]; onSelect: (ids: string[]) => void;
@@ -24,7 +24,7 @@ export function Stage(props: Props) {
   const [space,setSpace]=useState(false), [guides,setGuides]=useState(false);
   const worktop=useRef<HTMLDivElement>(null),[paperWidth,setPaperWidth]=useState<number>();
   useEffect(()=>{if(!worktop.current)return;const observer=new ResizeObserver(entries=>{const bounds=entries[0].contentRect;setPaperWidth(Math.max(1,Math.min(bounds.width,bounds.height*project.width/project.height)));});observer.observe(worktop.current);return()=>observer.disconnect();},[project.width,project.height]);
-  const imageKey=project.scenes.flatMap(s=>s.elements.map(e=>(e.src||'')+(e.fontFamily||'')+(e.fontWeight||''))).join('|')+(project.fonts||[]).map(f=>f.family).join('|');
+  const imageKey=useMemo(()=>project.scenes.flatMap(s=>s.elements.map(e=>(e.src||'')+(e.fontFamily||'')+(e.fontWeight||''))).join('|')+(project.fonts||[]).map(f=>f.family).join('|'),[project.scenes,project.fonts]);
   useEffect(()=> {
     let active=true;
     Promise.all([prepareImages(project),loadFonts(project)]).then(([map])=>{if(active){images.current=map;setRevision(v=>v+1);}}).catch(e=>onError(String(e.message||e)));

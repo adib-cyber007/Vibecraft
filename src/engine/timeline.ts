@@ -97,9 +97,10 @@ export function cameraAtTime(project: Project, state: SceneTime): Camera {
 }
 export function audioTrackDuration(track: AudioTrack): number { return Math.max(0, track.trimEnd - track.trimStart); }
 export function audioTrackStart(project: Project, track: AudioTrack): number { return seconds(track.start) + (track.sceneId ? sceneStart(project, track.sceneId) : 0); }
+export function effectiveAudioFades(track:AudioTrack):{fadeIn:number;fadeOut:number}{const duration=audioTrackDuration(track);return {fadeIn:Math.min(seconds(track.fadeIn),duration),fadeOut:Math.min(seconds(track.fadeOut),duration)};}
 export function audioVolumeAtTime(project: Project, track: AudioTrack, time: number): number {
   const elapsed = time - audioTrackStart(project, track), duration = audioTrackDuration(track);
   if (elapsed < 0 || elapsed >= duration) return 0;
-  const fadeIn = seconds(track.fadeIn), fadeOut = seconds(track.fadeOut);
+  const {fadeIn,fadeOut} = effectiveAudioFades(track);
   return clamp(track.volume) * (fadeIn ? clamp(elapsed / fadeIn) : 1) * (fadeOut ? clamp((duration - elapsed) / fadeOut) : 1);
 }
