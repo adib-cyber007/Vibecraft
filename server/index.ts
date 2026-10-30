@@ -19,18 +19,24 @@ export function requireLocalOrigin(req: Request, res: Response, next: NextFuncti
   next();
 }
 
-export async function createApplication(options: { production?: boolean; port?: number; editor?: boolean } = {}) {
+export async function createApplication(options: { production?: boolean; port?: number; editor?: boolean; session?: { id: string; stopToken: string } } = {}) {
   const app = express(), runtime = resolve(workspace, '.runtime');
   await mkdir(runtime, { recursive: true });
   let port = options.port ?? Number(process.env.PORT ?? 4310);
   const manager = new ExportManager(runtime, () => `http://127.0.0.1:${port}`);
   const services = new LocalServices(runtime), diagnostics = new ChildProcesses();
+  const session = options.session ?? (process.env.VIBECRAFT_SESSION_ID && process.env.VIBECRAFT_STOP_TOKEN ? { id: process.env.VIBECRAFT_SESSION_ID, stopToken: process.env.VIBECRAFT_STOP_TOKEN } : undefined);
   app.disable('x-powered-by');
   app.use('/api', requireLocalOrigin, express.json({ limit: '60mb' }));
   let ffmpeg: boolean | undefined;
   app.get('/api/health', async (_req, res) => {
     if (ffmpeg === undefined) { try { await runCommand(diagnostics, 'ffmpeg', ['-version']); ffmpeg = true; } catch { ffmpeg = false; } }
-    res.json({ ok: true, ffmpeg, local: true, exportBusy: manager.isBusy(), limits: { duration: 600, frames: 18000, maxAssetMB: 20, maxProjectAssetsMB: 40 } });
+    res.json({ app: 'vibecraft', ok: true, ffmpeg, local: true, sessionId: session?.id, exportBusy: manager.isBusy(), limits: { duration: 600, frames: 18000, maxAssetMB: 20, maxProjectAssetsMB: 40 } });
+  });
+  if (session) app.post('/api/session/stop', (req, res) => {
+    if (req.body?.token !== session.stopToken) { res.status(403).json({ error: 'This launcher does not own the running studio session.' }); return; }
+    res.once('finish', () => { setTimeout(() => { void close(); }, 50).unref(); });
+    res.status(202).json({ stopping: true });
   });
   app.post('/api/exports', async (req, res) => { const job = await manager.admit(req.body); res.status(202).json(job); });
   app.get('/api/exports/:id', (req, res) => { const job = manager.get(req.params.id); job ? res.json(job) : res.status(404).json({ error: 'Export not found.' }); });
@@ -50,7 +56,7 @@ export async function createApplication(options: { production?: boolean; port?: 
       vite = dev;
       app.use(dev.middlewares);
     }
-    if (options.production) app.get('/{*path}', (_req, res) => { res.sendFile(resolve(workspace, 'dist', 'index.html')); });
+    if (options.production) app.get('/{*path}', (_req, res) => { res.sendFile(resolve(workspace, 'dist', 'index.html'), { dotfiles: 'allow' }); });
   }
   app.use((error: unknown, _req: Request, res: Response, _next: NextFunction) => {
     if (res.headersSent) return;
@@ -59,6 +65,10 @@ export async function createApplication(options: { production?: boolean; port?: 
     res.status(typed.status ?? (error instanceof ZodError ? 400 : 400)).json({ error: message });
   });
   const server = createServer(app);
+  let closing: Promise<void> | undefined;
+  function close(): Promise<void> {
+    return closing ??= (async () => { diagnostics.killAll(); services.close(); await manager.close(); await vite?.close(); await new Promise<void>(done => { server.close(() => done()); server.closeAllConnections(); }); })();
+  }
   return {
     app, server, manager,
     async listen() {
@@ -66,7 +76,7 @@ export async function createApplication(options: { production?: boolean; port?: 
       const address = server.address(); if (address && typeof address !== 'string') port = address.port;
       return port;
     },
-    async close() { diagnostics.killAll(); services.close(); await manager.close(); await vite?.close(); await new Promise<void>(done => { server.close(() => done()); server.closeAllConnections(); }); },
+    close,
   };
 }
 

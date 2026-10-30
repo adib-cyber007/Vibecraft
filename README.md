@@ -2,7 +2,15 @@
 
 A local whiteboard animation studio and a responsive dark landing page for content creators. The main action opens the editor without signup or payment.
 
-Private source repository: [adib-cyber007/Vibecraft](https://github.com/adib-cyber007/Vibecraft).
+Public source repository: [adib-cyber007/Vibecraft](https://github.com/adib-cyber007/Vibecraft).
+
+## Share with another PC
+
+The Windows x64 portable ZIP contains the built app, Node, the rendering browser, FFmpeg/FFprobe, production dependencies, source and runtime notices. Copy it to a Windows 10/11 64-bit computer, extract the entire ZIP into a writable folder, and double-click Start-Vibecraft.cmd. No developer tools, installation or internet connection are needed for editing and video export. Stop-Vibecraft.cmd closes only the session started from that folder. Check-Vibecraft.cmd checks the bundled runtimes.
+
+To transfer saved stories, download each as an editable .vibecraft file with Ctrl+Shift+S on the original PC. On the receiving PC, open My projects and import the file. Embedded media/fonts travel with the file. Browser saves and personal files are excluded from the app package. Installed narration voices can differ on the receiving PC, and optional Ollama still needs its own installation/model.
+
+To build a package on this Windows x64 development PC, run npm run package:windows after npm ci. The packaging script verifies Node against its official release checksum, copies the installed documented runtimes, retains notices, includes only allow-listed project source and production dependencies, and writes a fresh ZIP, SHA-256 checksum and file manifest under artifacts/releases/. See [packaging and verification](docs/portable-package.md) and the included START-HERE.txt.
 
 ## Open it
 

@@ -15,6 +15,29 @@ import { ChildProcesses, runCommand } from '../server/process';
 
 const svgUrl = (svg: string) => `data:image/svg+xml;base64,${Buffer.from(svg).toString('base64')}`;
 
+test('portable stop requests require the owning session token and retain localhost protections', async () => {
+  const application=await createApplication({editor:false,port:0,session:{id:'portable-fixture',stopToken:'owned-token'}});
+  const port=await application.listen(),base=`http://127.0.0.1:${port}`;
+  try{
+    const health=await(await fetch(base+'/api/health')).json();
+    assert.equal(health.app,'vibecraft');assert.equal(health.sessionId,'portable-fixture');assert.equal('stopToken' in health,false);
+    const stop=(token:string,origin=base)=>fetch(base+'/api/session/stop',{method:'POST',headers:{'Content-Type':'application/json',Origin:origin},body:JSON.stringify({token})});
+    assert.equal((await stop('wrong-token')).status,403);
+    assert.equal((await stop('owned-token','https://example.com')).status,403);
+    assert.equal((await fetch(base+'/api/health')).status,200);
+    const accepted=await stop('owned-token');assert.equal(accepted.status,202);assert.deepEqual(await accepted.json(),{stopping:true});
+    const until=Date.now()+10000;let stopped=false;
+    while(Date.now()<until){try{await fetch(base+'/api/health',{signal:AbortSignal.timeout(500)});}catch{stopped=true;break;}await new Promise(done=>setTimeout(done,75));}
+    assert.equal(stopped,true,'The owned server must shut down after acknowledging stop.');
+  }finally{await application.close();await application.close();}
+});
+
+test('development and source sessions do not expose the portable shutdown route',async()=>{
+  const application=await createApplication({editor:false,port:0});const port=await application.listen();
+  try{assert.equal((await fetch(`http://127.0.0.1:${port}/api/session/stop`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:'anything'})})).status,404);}
+  finally{await application.close();}
+});
+
 test('portable project validation preserves safe assets and rejects active or remote resources', () => {
   const project = createProject();
   project.scenes[0].elements.push(createElement('image', { src: svgUrl('<svg xmlns="http://www.w3.org/2000/svg"><path d="M0 0L10 10"/></svg>') }));

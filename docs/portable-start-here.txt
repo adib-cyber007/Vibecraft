@@ -1,0 +1,48 @@
+VIBECRAFT - WINDOWS PORTABLE EDITION
+
+1. Copy the ZIP to a Windows 10/11 64-bit PC.
+2. Right-click the ZIP and choose Extract All. Use a writable local folder.
+3. Open the extracted Vibecraft folder and double-click Start-Vibecraft.cmd.
+4. Your browser opens http://127.0.0.1:4310. Choose Open the editor.
+5. When finished, use Stop-Vibecraft.cmd. Closing the browser alone leaves
+   the local studio running so an export can finish.
+
+No administrator access, Node installation, npm, Git or internet connection
+is needed for editing and video exports. Node, Chromium and FFmpeg are
+included. Check-Vibecraft.cmd checks the bundled files and runtime versions.
+Windows may apply its normal downloaded-app security checks to the package.
+
+TRANSFERRING YOUR STORIES
+On the original PC, open each story in the editor and press Ctrl+Shift+S to
+download its editable .vibecraft project file. Send those files separately.
+On the other PC, choose My projects > Open a project file and select one.
+Images, audio and custom fonts embedded in the project travel with it.
+Existing browser saves, personal media and account data are not in this ZIP.
+
+KEEP YOUR WORK
+Stories autosave in the browser on the receiving PC. Keep using the same
+browser and the same localhost port. Use .vibecraft downloads for backups.
+Clearing browser storage removes local saves. Copying this app folder alone
+does not copy the browser's saved stories. Download exported videos you want
+to keep; temporary output and logs are under .runtime inside this folder.
+
+OPTIONAL FEATURES
+Narration uses voices installed on the receiving Windows PC, so its voice
+list can differ. Microphone recording needs that browser's permission.
+AI storyboard generation needs a separately installed local Ollama model.
+No AI model, login, license key or personal browser profile is bundled.
+
+IF IT DOES NOT START
+Extract the entire ZIP first and use a writable folder, not the ZIP viewer.
+Run Check-Vibecraft.cmd. Startup details are in .runtime/server.error.log.
+If port 4310 is occupied, stop the other copy, or run:
+  Start-Vibecraft.cmd --port 4311
+Changing the port gives a separate set of browser saves; transfer projects
+using .vibecraft files when changing ports.
+
+SOURCE AND NOTICES
+The source project is included under source/ and is also available at:
+  https://github.com/adib-cyber007/Vibecraft
+Third-party runtime notices and source/build references are under licenses/.
+This package targets Windows x64. Other operating systems use the source
+project and their own matching runtimes.

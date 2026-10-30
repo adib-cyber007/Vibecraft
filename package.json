@@ -13,7 +13,9 @@
     "test:export": "tsx tests/render-export.ts",
     "test:friendly": "tsx tests/friendly-browser.ts",
     "test:environment": "tsx tests/environment-browser.ts",
-    "check:environment": "node scripts/check-environment.mjs"
+    "check:environment": "node scripts/check-environment.mjs",
+    "package:windows": "npm run build && node scripts/package-windows.mjs",
+    "test:portable": "tsx tests/portable-package.ts"
   },
   "engines": {
     "node": "^24.11.0 || >=26.0.0"
@@ -46,6 +48,7 @@
     "rea-agents": "^6.4.0",
     "tsx": "^4.23.15",
     "typescript": "^7.0.2",
-    "vite": "^8.3.5"
+    "vite": "^8.3.5",
+    "esbuild": "^0.28.2"
   }
 }
